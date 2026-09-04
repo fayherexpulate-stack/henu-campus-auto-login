@@ -1,0 +1,14 @@
+# Never publish personal settings, logs, or browser profiles.
+config.json
+status.json
+monitor-status.json
+*.log
+EdgeProfile/
+EdgeSelfTest/
+backup*/
+*.key
+*.pem
+.env
+.env.*
+node_modules/
+work/

@@ -1,0 +1,20 @@
+<!doctype html><meta charset="utf-8"><title>校园网操作自检（虚拟账号）</title>
+<input id="userName"><input id="password" type="password">
+<span><input name="operator" type="radio" value="yd">移动</span>
+<span><input name="operator" type="radio" value="lt">联通</span>
+<span><input name="operator" type="radio" value="dx">电信</span>
+<input id="rememberPassword" type="checkbox" checked><button id="loginBtn">立即登录</button>
+<script>
+let suffix='';
+document.querySelectorAll('[name=operator]').forEach(r=>r.onclick=()=>{
+ if(r.parentElement.classList.contains('on')){r.parentElement.classList.remove('on');suffix='';}
+ else {document.querySelectorAll('span').forEach(s=>s.classList.remove('on'));r.parentElement.classList.add('on');suffix=r.value;}
+});
+// Simulate remembered/preselected mobile, including the portal's toggle-off behavior.
+document.querySelector('[value=yd]').click();
+loginBtn.onclick=()=>{
+ document.body.dataset.clicks=String(Number(document.body.dataset.clicks||0)+1);
+ document.body.dataset.result=userName.value==='fixture-user'&&password.value==='fixture-pass'&&!rememberPassword.checked&&suffix ? 'ok-'+suffix : 'failed';
+};
+window.jQuery={_data:()=>({click:[loginBtn.onclick]})};
+</script>
