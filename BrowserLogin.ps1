@@ -49,7 +49,10 @@ try {
         if ([string]$config.portalOrigin -ne 'http://172.29.35.36:6060') { throw '认证地址不在允许列表，已停止发送账号密码。' }
         $ip=Get-WlanIPv4
         if (-not $ip) { throw 'Wi-Fi 尚未获取地址。' }
-        $portalUrl='{0}/portalReceiveAction.do?wlanuserip={1}&wlanacname={2}' -f $config.portalOrigin,[uri]::EscapeDataString($ip),[uri]::EscapeDataString($config.defaultAcName)
+        $portalContext=Get-PortalContext ([string]$config.portalOrigin) $ip ([string]$config.defaultAcName)
+        if($portalContext.Source -eq 'redirect'){Write-Log '已从经过来源校验的校园网重定向获取 AC 参数。'}
+        else{Write-Log '未获取有效重定向 AC 参数，使用兼容回退值。'}
+        $portalUrl='{0}/portalReceiveAction.do?wlanuserip={1}&wlanacname={2}' -f $config.portalOrigin,[uri]::EscapeDataString($portalContext.Ip),[uri]::EscapeDataString($portalContext.AcName)
         $profileDir=Join-Path $appDir 'EdgeProfile'
     }
     $edgePath=@((Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'),(Join-Path $env:ProgramFiles 'Microsoft\Edge\Application\msedge.exe')) | Where-Object {Test-Path -LiteralPath $_} | Select-Object -First 1

@@ -8,7 +8,7 @@ try {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
     [Windows.Forms.Application]::EnableVisualStyles()
-    Write-Log '守护程序 2.2 已启动：多站点检测、连续失败确认、认证冷却。'
+    Write-Log '守护程序 2.4 已启动：支持正常关机退出与原子状态写入。'
     if (-not $SkipPrompt) {
         $answer=[Windows.Forms.MessageBox]::Show('今天在学校吗？选“是”后显示状态，自动连接校园网并操作登录网页。','河南大学校园网助手','YesNo','Question')
         if ($answer -ne [Windows.Forms.DialogResult]::Yes) { Write-Log '用户选择本次不开启守护。'; exit 0 }
@@ -19,8 +19,10 @@ try {
     $script:failures=0; $script:firstFailure=[DateTime]::MinValue
     $script:cooldownUntil=[DateTime]::MinValue; $script:attempts=0
     $script:workerMode='probe'; $script:recoverNext=$false
+    $script:probeWorker=New-InternetProbeWorker (Join-Path $PSScriptRoot 'Common.ps1')
+    $script:lastStatusRead=[DateTime]::MinValue
     $form=New-Object Windows.Forms.Form
-    $form.Text='河南大学校园网助手 · 2.2'
+    $form.Text='河南大学校园网助手 · 2.4'
     $form.StartPosition='CenterScreen'; $form.ClientSize=New-Object Drawing.Size(480,220)
     $form.FormBorderStyle='FixedDialog'; $form.MaximizeBox=$false
     $label=New-Object Windows.Forms.Label
@@ -48,7 +50,14 @@ try {
     $hide.Add_Click({$form.Hide()})
     $exitButton.Add_Click({$script:quitting=$true;$form.Close()})
     $exitItem.Add_Click({$script:quitting=$true;$form.Close()})
-    $form.Add_FormClosing({param($sender,$e) if(-not $script:quitting){$e.Cancel=$true;$form.Hide()}})
+    $form.Add_FormClosing({
+        param($sender,$e)
+        if(-not $script:quitting -and $e.CloseReason -eq [Windows.Forms.CloseReason]::UserClosing){
+            $e.Cancel=$true;$form.Hide()
+        } else {
+            $script:quitting=$true
+        }
+    })
     if ($StartMinimized) { $form.Add_Shown({$form.Hide()}) }
     $timer=New-Object Windows.Forms.Timer
     $timer.Interval=300
@@ -56,16 +65,31 @@ try {
         try {
             $now=Get-Date
             if (($now-$script:lastHeartbeat).TotalSeconds -ge 10) {
-                @{pid=$PID;time=$now.ToString('o');version='2.2';state='running';failures=$script:failures;mode=$script:workerMode;cooldownUntil=$script:cooldownUntil.ToString('o')}|ConvertTo-Json -Compress|Set-Content (Join-Path $appDir 'monitor-status.json') -Encoding UTF8
+                $heartbeat=@{pid=$PID;time=$now.ToString('o');version='2.4';state='running';failures=$script:failures;mode=$script:workerMode;probeEngine='in-process';cooldownUntil=$script:cooldownUntil.ToString('o')}
+                Set-AtomicJson (Join-Path $appDir 'monitor-status.json') $heartbeat
                 $script:lastHeartbeat=$now
             }
             $statusPath=Join-Path $appDir 'status.json'
-            if (Test-Path $statusPath) {
+            if (($now-$script:lastStatusRead).TotalSeconds -ge 1 -and (Test-Path $statusPath)) {
+                $script:lastStatusRead=$now
                 try {
                     $state=Get-Content $statusPath -Raw -Encoding UTF8|ConvertFrom-Json
                     $label.Text=[string]$state.message
                     $tray.Text='校园网助手：'+[string]$state.phase
                 } catch {}
+            }
+            $completed=$false; $code=1
+            if ($script:probeWorker.Pending) {
+                if ($script:probeWorker.Pending.IsCompleted) {
+                    $code=Complete-InternetProbe $script:probeWorker
+                    $completed=$true
+                } elseif (($now-$script:probeWorker.Started).TotalSeconds -gt 20) {
+                    Close-InternetProbeWorker $script:probeWorker
+                    $script:probeWorker=$null
+                    $script:probeWorker=New-InternetProbeWorker (Join-Path $PSScriptRoot 'Common.ps1')
+                    Write-Log '进程内联网检查超时，已重建检测线程，不触发认证。'
+                    $completed=$true
+                }
             }
             if ($script:worker) {
                 $script:worker.Refresh()
@@ -73,6 +97,16 @@ try {
                     $script:worker.WaitForExit()
                     $code=$script:worker.ExitCode
                     $script:worker.Dispose();$script:worker=$null
+                    $completed=$true
+                } elseif (($now-$script:worker.StartTime).TotalSeconds -gt 150) {
+                    # Terminate only the owned recovery tree, never remote-control software.
+                    $stopper=Start-NoConsoleProcess (Join-Path $env:SystemRoot 'System32\taskkill.exe') ('/PID '+$script:worker.Id+' /T /F')
+                    $stopper.Dispose()
+                    Write-State 'error' '认证等待超时，稍后重试。'
+                    Write-Log '守护程序终止了超时的认证子任务。'
+                }
+            }
+            if ($completed) {
                     if ($code -eq 0) {
                         $script:failures=0; $script:firstFailure=[DateTime]::MinValue
                         # Retain the last authentication cooldown across a brief online period.
@@ -104,23 +138,21 @@ try {
                         $script:nextCheck=$now.AddSeconds(30)
                     }
                     $retry.Enabled=$true
-                } elseif (($now-$script:worker.StartTime).TotalSeconds -gt $(if($script:workerMode -eq 'probe'){20}else{150})) {
-                    # Stop only the worker tree created by this monitor.
-                    & taskkill.exe /PID $script:worker.Id /T /F 2>$null | Out-Null
-                    Write-State 'error' '检查或认证等待超时，稍后重试。'
-                    Write-Log '守护程序终止了超时的认证子任务。'
-                }
             }
-            if (-not $script:worker -and ($now -ge $script:nextCheck -or $script:checkNow)) {
-                $args=@('-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File',('"'+(Join-Path $PSScriptRoot 'HenuAutoLogin.ps1')+'"'),'-Quiet')
+            if (-not $script:worker -and -not $script:probeWorker.Pending -and ($now -ge $script:nextCheck -or $script:checkNow)) {
                 $script:checkNow=$false
                 if ($script:recoverNext) {
-                    $args+='-RecoveryConfirmed'; $script:workerMode='recover'; $script:recoverNext=$false
+                    $script:workerMode='recover'; $script:recoverNext=$false
                     $script:attempts++
                     $script:cooldownUntil=$now.AddSeconds((Get-RecoveryDelay $script:attempts))
                     Write-Log ('多站点连续失败已确认，尝试恢复；下一次认证至少间隔 '+(Get-RecoveryDelay $script:attempts)+' 秒。')
-                } else { $args+='-ProbeOnly'; $script:workerMode='probe' }
-                $script:worker=Start-Process powershell.exe -ArgumentList $args -WindowStyle Hidden -PassThru
+                    $arguments='-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "'+(Join-Path $PSScriptRoot 'HenuAutoLogin.ps1')+'" -Quiet -RecoveryConfirmed'
+                    $script:worker=Start-NoConsoleProcess (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') $arguments
+                } else {
+                    $script:workerMode='probe'
+                    if(-not $script:probeWorker){$script:probeWorker=New-InternetProbeWorker (Join-Path $PSScriptRoot 'Common.ps1')}
+                    Start-InternetProbe $script:probeWorker
+                }
                 $retry.Enabled=$false
             }
         } catch {
@@ -137,7 +169,11 @@ try {
 } finally {
     if($timer){$timer.Stop();$timer.Dispose()}
     if($tray){$tray.Visible=$false;$tray.Dispose()}
-    if($script:worker -and -not $script:worker.HasExited){& taskkill.exe /PID $script:worker.Id /T /F 2>$null|Out-Null}
+    Close-InternetProbeWorker $script:probeWorker
+    if($script:worker -and -not $script:worker.HasExited){
+        $stopper=Start-NoConsoleProcess (Join-Path $env:SystemRoot 'System32\taskkill.exe') ('/PID '+$script:worker.Id+' /T /F')
+        $stopper.Dispose()
+    }
     Write-Log '守护程序已退出。'
     try{$mutex.ReleaseMutex()}catch{}
     $mutex.Dispose()

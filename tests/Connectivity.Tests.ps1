@@ -69,6 +69,26 @@ Assert (-not $d.Recover) 'cooldown blocks repeated authentication'
 $d=Get-ConnectivityDecision $false 8 $t ($t.AddSeconds(121)) ($t.AddSeconds(120))
 Assert $d.Recover 'persistent outage may retry after cooldown'
 Assert ((Get-RecoveryDelay 1) -eq 120 -and (Get-RecoveryDelay 2) -eq 240 -and (Get-RecoveryDelay 10) -eq 300) 'bounded authentication backoff'
+$origin='http://172.29.35.36:6060'
+$dynamic=Get-PortalContextFromLocation ($origin+'/portalReceiveAction.do?wlanuserip=10.8.7.6&wlanacname=HD-JiaoXue-ME60') $origin '10.1.1.1' 'HD-SuShe-ME60'
+Assert ($dynamic.Source -eq 'redirect' -and $dynamic.Ip -eq '10.8.7.6' -and $dynamic.AcName -eq 'HD-JiaoXue-ME60') 'accept validated dynamic portal context'
+$foreign=Get-PortalContextFromLocation 'http://evil.invalid/portalReceiveAction.do?wlanuserip=10.8.7.6&wlanacname=evil' $origin '10.1.1.1' 'HD-SuShe-ME60'
+Assert ($foreign.Source -eq 'fallback' -and $foreign.AcName -eq 'HD-SuShe-ME60') 'reject portal context from foreign origin'
+$invalid=Get-PortalContextFromLocation ($origin+'/portalReceiveAction.do?wlanuserip=not-an-ip&wlanacname=bad%20value') $origin '10.1.1.1' 'HD-SuShe-ME60'
+Assert ($invalid.Source -eq 'fallback') 'reject invalid portal parameters'
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -ReferencedAssemblies System.Windows.Forms -TypeDefinition 'public class CloseTestForm : System.Windows.Forms.Form { public void RaiseClose(System.Windows.Forms.FormClosingEventArgs e) { base.OnFormClosing(e); } }'
+$closeForm=New-Object CloseTestForm
+$script:testQuitting=$false
+$closeForm.Add_FormClosing({param($sender,$e) if(-not $script:testQuitting -and $e.CloseReason -eq [Windows.Forms.CloseReason]::UserClosing){$e.Cancel=$true;$closeForm.Hide()}else{$script:testQuitting=$true}})
+$userClose=New-Object Windows.Forms.FormClosingEventArgs([Windows.Forms.CloseReason]::UserClosing,$false)
+$closeForm.RaiseClose($userClose)
+Assert $userClose.Cancel 'user close hides the monitor'
+$script:testQuitting=$false
+$shutdownClose=New-Object Windows.Forms.FormClosingEventArgs([Windows.Forms.CloseReason]::WindowsShutDown,$false)
+$closeForm.RaiseClose($shutdownClose)
+Assert (-not $shutdownClose.Cancel -and $script:testQuitting) 'Windows shutdown is allowed to close normally'
+$closeForm.Dispose()
 
 # Execute the shipped core with a fake shared module in an isolated directory.
 # Never disconnect real Wi-Fi, read saved passwords, or open the real login page.
@@ -79,6 +99,34 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'fixtures\Common.ps1') -Destinat
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'fixtures\BrowserLogin.ps1') -Destination $testDir
 $ps=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 try {
+    $hidden=Start-NoConsoleProcess $ps '-NoProfile -NonInteractive -Command "exit 7"'
+    try {
+        Assert ($hidden.StartInfo.CreateNoWindow -and -not $hidden.StartInfo.UseShellExecute) 'recovery launcher prohibits a console window'
+        Assert ($hidden.WaitForExit(5000)) 'no-console child completes'
+        Assert ($hidden.ExitCode -eq 7) 'no-console child exit code is preserved'
+    } finally {if(-not $hidden.HasExited){$hidden.Kill()};$hidden.Dispose()}
+    $env:HENU_TEST_CASE='online'
+    $worker=New-InternetProbeWorker (Join-Path $testDir 'Common.ps1')
+    try {
+        foreach($scenario in @(@{name='online';code=0},@{name='offline';code=10},@{name='online';code=0})) {
+            $env:HENU_TEST_CASE=$scenario.name
+            Start-InternetProbe $worker
+            $duplicateBlocked=$false
+            try {Start-InternetProbe $worker}catch{$duplicateBlocked=$true}
+            Assert $duplicateBlocked 'thread worker prevents overlapping probes'
+            $deadline=(Get-Date).AddSeconds(5)
+            while(-not $worker.Pending.IsCompleted -and (Get-Date) -lt $deadline){Start-Sleep -Milliseconds 30}
+            Assert $worker.Pending.IsCompleted 'thread worker completes asynchronously'
+            Assert ((Complete-InternetProbe $worker) -eq $scenario.code) ('reused thread: '+$scenario.name)
+        }
+        $worker.Shell.Commands.Clear()
+        [void]$worker.Shell.AddScript('function Test-Internet { throw "simulated checker failure" }')
+        [void]$worker.Shell.Invoke()
+        Start-InternetProbe $worker
+        $deadline=(Get-Date).AddSeconds(5)
+        while(-not $worker.Pending.IsCompleted -and (Get-Date) -lt $deadline){Start-Sleep -Milliseconds 30}
+        Assert ((Complete-InternetProbe $worker) -eq 1) 'thread exception is not mistaken for offline'
+    } finally {Close-InternetProbeWorker $worker}
     foreach ($case in @(
         @{name='online';args=@();code=0;login=$false},
         @{name='online';args=@('-ForceLogin');code=0;login=$false},
