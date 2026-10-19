@@ -12,3 +12,5 @@ backup*/
 .env.*
 node_modules/
 work/
+panel.json
+henu.ico

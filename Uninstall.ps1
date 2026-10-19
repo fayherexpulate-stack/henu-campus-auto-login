@@ -18,6 +18,15 @@ Try-Step '关闭认证专用 Edge' {
     $edges=Get-CimInstance Win32_Process -Filter "Name='msedge.exe'"|Where-Object{$command=[string]$_.CommandLine;$command -and @($profiles|Where-Object{$command.Contains($_)}).Count -gt 0}
     foreach($edge in $edges){& taskkill.exe /PID $edge.ProcessId /T /F 2>$null|Out-Null;if($LASTEXITCODE -ne 0 -and (Get-Process -Id $edge.ProcessId -ErrorAction SilentlyContinue)){throw ('无法终止 Edge '+$edge.ProcessId)}}
 }
+Try-Step '删除桌面“校园网控制台”快捷方式' {
+    $shortcutPath=Join-Path ([Environment]::GetFolderPath('Desktop')) '校园网控制台.lnk'
+    if(Test-Path -LiteralPath $shortcutPath){
+        # Only remove the shortcut this tool created (it must point into the install directory).
+        $shell=New-Object -ComObject WScript.Shell
+        try{$arguments=[string]$shell.CreateShortcut($shortcutPath).Arguments}finally{[void][Runtime.InteropServices.Marshal]::ReleaseComObject($shell)}
+        if($arguments.Contains($installDir)){Remove-Item -LiteralPath $shortcutPath -Force}
+    }
+}
 Try-Step '删除本机配置和日志' {if(Test-Path -LiteralPath $installDir){Remove-Item -LiteralPath $installDir -Recurse -Force;if(Test-Path -LiteralPath $installDir){throw '安装目录仍然存在。'}}}
 Add-Type -AssemblyName System.Windows.Forms
 if($failures.Count -eq 0){[Windows.Forms.MessageBox]::Show('已移除开机任务、助手进程、专用 Edge 资料和本机账号配置。Windows 中的 henu-student Wi-Fi 配置会保留，并保持手动连接模式。','卸载完成','OK','Information')|Out-Null;exit 0}

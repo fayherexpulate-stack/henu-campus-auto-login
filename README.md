@@ -1,21 +1,26 @@
 # 河南大学校园网自动登录助手
 
-Windows 版 `henu-student` 连接与网页认证工具，支持移动、联通、电信。当前版本 **2.4：可靠退出与原子写入版**。
+Windows 版 `henu-student` 连接与网页认证工具，支持移动、联通、电信。当前版本 **2.5：网页控制台与托盘状态面板**。
 
 这是个人制作的非官方工具，与河南大学及运营商无隶属关系。请仅用于自己的账号，并遵守校园网络使用规则。
 
 ## 下载与安装
 
-1. [下载 2.4 安装包](https://github.com/fayherexpulate-stack/henu-campus-auto-login/raw/refs/heads/main/downloads/HENU-Campus-AutoLogin-v2.4.zip)，先完整解压。
+1. [下载 2.5 安装包](https://github.com/fayherexpulate-stack/henu-campus-auto-login/raw/refs/heads/main/downloads/HENU-Campus-AutoLogin-v2.5.zip)，先完整解压（SHA-256 见 `downloads/HENU-Campus-AutoLogin-v2.5.zip.sha256.txt`）。需要旧版可下载 [2.4](https://github.com/fayherexpulate-stack/henu-campus-auto-login/raw/refs/heads/main/downloads/HENU-Campus-AutoLogin-v2.4.zip)。
 2. 双击 `安装校园网自动登录.cmd`。
 3. 输入自己的校园网账号、密码，选择运营商，完成安装。
 
 需要 Windows 10/11、Windows PowerShell 5.1、Microsoft Edge 和可用的无线网卡。首次使用建议先手动连接过一次 `henu-student`。无运营商宽带的“校园资源”选项保留，但不保证能访问外网。
 
+## 2.5 新功能
+
+- **网页控制台**：双击桌面“校园网控制台”（或托盘菜单“打开网页控制台”、`打开校园网控制台.cmd`），在浏览器里填写账号、密码和运营商，点“保存并登录”立即登录，并实时查看进度与上次失败原因。控制台只在本机 `127.0.0.1` 运行，每次启动生成随机令牌，其他网站和局域网设备都无法访问。
+- **右下角状态面板**：托盘 Wi-Fi 图标按状态变色（绿=已联网、蓝=处理中、橙=稍后重试、红=需要处理、灰=检测中）；单击后在屏幕右下角弹出状态面板，可一键立即登录、打开控制台、查看日志；登录成功或失败会有系统通知。
+
 ## 运行方式
 
 - 登录 Windows 桌面时询问“今天在学校吗？”；选“否”不运行，选“是”开始守护。
-- 正常上网时约每 10 秒检查一次，不重复认证、不切换当前可用网络。状态窗口可隐藏到托盘。
+- 正常上网时约每 10 秒检查一次，不重复认证、不切换当前可用网络。状态面板在屏幕右下角，点别处自动收起到托盘。
 - 每轮并行检查百度、腾讯、网易三个国内站点的 HTTPS 内容（`www.baidu.com/robots.txt`、`www.qq.com/robots.txt`、`www.163.com/robots.txt`）。任何一个验证通过，即认为互联网可用。
 - 所有检测连续至少 3 轮失败且持续至少 15 秒后，才连接校园 Wi-Fi 并尝试认证。
 - 打开认证页前、填写提交前再次验证：互联网已恢复则取消重复登录。
@@ -25,7 +30,7 @@ Windows 版 `henu-student` 连接与网页认证工具，支持移动、联通�
 - henu-student 设为手动连接；开机询问选“否”时，Windows 不会由该配置自行连接。
 - 关机和注销可正常退出；状态与配置使用原子替换，避免强制终止时留下空文件。
 
-安装时会执行一次检查；持续守护在下次进入 Windows 桌面时开启。也可以立即双击 `启动本次校园网自动连接.cmd`。修改账号或运营商可重新运行安装程序。卸载使用 `卸载校园网自动登录.cmd`，会删除本机配置与专用浏览器资料。
+安装时会执行一次检查；持续守护在下次进入 Windows 桌面时开启。也可以立即双击 `启动本次校园网自动连接.cmd`。修改账号、密码或运营商可在网页控制台完成，也可重新运行安装程序。卸载使用 `卸载校园网自动登录.cmd`，会删除本机配置与专用浏览器资料。
 
 ## 安全与限制
 
@@ -38,7 +43,7 @@ Windows 版 `henu-student` 连接与网页认证工具，支持移动、联通�
 
 ## 排查问题
 
-托盘中打开状态窗口，或查看 `%LOCALAPPDATA%\HenuAutoLogin\auto-login.log`。反馈前请删去账号等个人信息；不要上传 `config.json`、浏览器资料或整个安装目录。
+单击托盘图标打开状态面板（“查看日志”按钮），或查看 `%LOCALAPPDATA%\HenuAutoLogin\auto-login.log`。反馈前请删去账号等个人信息；不要上传 `config.json`、浏览器资料或整个安装目录。
 
 开机任务名为 `HENU Campus Auto Login`，按当前用户登录触发。退出本次守护不会删除下次登录时的自启动任务。
 
@@ -48,7 +53,10 @@ Windows 版 `henu-student` 连接与网页认证工具，支持移动、联通�
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Connectivity.Tests.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Panel.Tests.ps1
 ```
+
+`Panel.Tests.ps1` 覆盖网页控制台的请求解析、令牌与来源校验（防跨站与 DNS 重绑定）、路由、配置保存（不写明文密码）及真实回环端口的端到端请求。
 
 自检使用内存模拟网络和虚拟配置，覆盖部分检测站失效、登录页伪装 HTTP 200、重定向、超时、失败确认、恢复重置、冷却及核心程序的登录保护；不切断真实网络、不读取保存的密码。
 

@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>校园网控制台</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23a31f34'/%3E%3Cpath d='M7 15a13 13 0 0 1 18 0M10.5 19a8 8 0 0 1 11 0' stroke='white' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='23.5' r='2.4' fill='white'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#f4f2ef; --surface:#ffffff; --surface-2:#faf8f6; --line:#e6e1dc; --line-strong:#d6cfc8;
+  --text:#1f1a17; --muted:#6f6660; --faint:#9a918a;
+  --brand:#a31f34; --brand-ink:#ffffff; --brand-soft:#f8e9ec;
+  --ok:#15803d; --ok-soft:#e7f5ec; --busy:#1d4ed8; --busy-soft:#e8eefc;
+  --warn:#b45309; --warn-soft:#fdf1e2; --error:#c81e1e; --error-soft:#fdeaea; --idle:#6b7280; --idle-soft:#eef0f2;
+  --radius:14px; --shadow:0 1px 2px rgba(31,26,23,.05),0 8px 24px rgba(31,26,23,.06);
+  --font:"Microsoft YaHei UI","Microsoft YaHei","PingFang SC","Hiragino Sans GB","Segoe UI",system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#16130f; --surface:#211d19; --surface-2:#1b1814; --line:#342e28; --line-strong:#463e36;
+    --text:#f2ede8; --muted:#b3aaa1; --faint:#857c74;
+    --brand:#e05a6f; --brand-ink:#1a0d10; --brand-soft:#3a1a20;
+    --ok:#4ade80; --ok-soft:#14301f; --busy:#7aa2ff; --busy-soft:#18233f;
+    --warn:#f5a54a; --warn-soft:#3a2810; --error:#ff7b7b; --error-soft:#3d1717; --idle:#a3a9b3; --idle-soft:#262a30;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.25);
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font:15px/1.6 var(--font);min-height:100vh;-webkit-font-smoothing:antialiased}
+.wrap{max-width:980px;margin:0 auto;padding:28px 16px 96px}
+header{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+.mark{width:44px;height:44px;border-radius:12px;background:var(--brand);display:grid;place-items:center;flex:none}
+.mark svg{width:26px;height:26px}
+header h1{font-size:20px;margin:0;line-height:1.3;letter-spacing:.02em}
+header p{margin:0;color:var(--muted);font-size:13px}
+.grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:18px;align-items:start}
+@media (max-width:780px){.grid{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px}
+.card h2{font-size:15px;margin:0 0 4px;letter-spacing:.02em}
+.card .sub{color:var(--muted);font-size:13px;margin:0 0 18px}
+label.field{display:block;margin-bottom:14px}
+label.field span{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+.input{position:relative}
+input[type=text],input[type=password]{width:100%;height:44px;border:1px solid var(--line-strong);border-radius:10px;padding:0 14px;font:inherit;color:var(--text);background:var(--surface-2);outline:none;transition:border-color .15s,box-shadow .15s}
+input[type=text]:focus,input[type=password]:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft);background:var(--surface)}
+.input input{padding-right:56px}
+.reveal{position:absolute;right:6px;top:6px;height:32px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:var(--muted);font:13px var(--font);cursor:pointer}
+.reveal:hover{background:var(--brand-soft);color:var(--brand)}
+fieldset{border:0;margin:0 0 18px;padding:0}
+legend{font-size:13px;color:var(--muted);margin-bottom:6px;padding:0}
+.seg{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;background:var(--surface-2);border:1px solid var(--line-strong);border-radius:12px;padding:4px}
+@media (max-width:420px){.seg{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label{display:flex;align-items:center;justify-content:center;height:38px;border-radius:9px;font-size:14px;cursor:pointer;color:var(--muted);transition:background .15s,color .15s;user-select:none}
+.seg input:checked+label{background:var(--surface);color:var(--text);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.seg input:focus-visible+label{outline:2px solid var(--brand);outline-offset:1px}
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+button.btn{height:44px;padding:0 18px;border-radius:10px;font:600 14px var(--font);cursor:pointer;border:1px solid transparent;transition:filter .15s,background .15s,opacity .15s}
+.btn.primary{background:var(--brand);color:var(--brand-ink);flex:1 1 180px}
+.btn.primary:hover{filter:brightness(1.07)}
+.btn.ghost{background:transparent;border-color:var(--line-strong);color:var(--text)}
+.btn.ghost:hover{background:var(--surface-2)}
+.btn:disabled{opacity:.55;cursor:not-allowed;filter:none}
+.form-msg{min-height:22px;margin:12px 0 0;font-size:13px;color:var(--muted)}
+.form-msg.error{color:var(--error)}
+.form-msg.ok{color:var(--ok)}
+.status-head{display:flex;align-items:center;gap:12px;margin:6px 0 10px}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--idle);flex:none;box-shadow:0 0 0 4px var(--idle-soft)}
+[data-level=ok] .dot{background:var(--ok);box-shadow:0 0 0 4px var(--ok-soft)}
+[data-level=busy] .dot{background:var(--busy);box-shadow:0 0 0 4px var(--busy-soft);animation:pulse 1.2s ease-in-out infinite}
+[data-level=warn] .dot{background:var(--warn);box-shadow:0 0 0 4px var(--warn-soft)}
+[data-level=error] .dot{background:var(--error);box-shadow:0 0 0 4px var(--error-soft)}
+@keyframes pulse{50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){[data-level=busy] .dot{animation:none}}
+.status-title{font-size:22px;font-weight:700;letter-spacing:.02em}
+.status-msg{color:var(--muted);margin:0 0 16px;min-height:24px}
+dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:0 0 16px;font-size:14px}
+dt{color:var(--faint)}
+dd{margin:0;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.last-error{display:none;background:var(--error-soft);color:var(--error);border-radius:10px;padding:10px 12px;font-size:13px;margin-bottom:16px}
+.last-error.show{display:block}
+.log{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}
+.log h3{font-size:13px;color:var(--muted);font-weight:600;margin:0 0 8px}
+.log ol{list-style:none;margin:0;padding:0;font-size:13px}
+.log li{display:grid;grid-template-columns:62px 1fr;gap:10px;padding:5px 0;color:var(--muted)}
+.log li b{color:var(--text);font-weight:600}
+.log time{color:var(--faint);font-variant-numeric:tabular-nums}
+.log .empty{color:var(--faint)}
+.notes{margin-top:18px;color:var(--faint);font-size:12.5px;line-height:1.7}
+.notes p{margin:0 0 4px}
+.chip{position:fixed;right:16px;bottom:16px;display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:9px 16px 9px 13px;box-shadow:0 6px 24px rgba(0,0,0,.14);font-size:13.5px;cursor:pointer;max-width:calc(100vw - 32px);color:var(--text);font-family:var(--font)}
+.chip .dot{width:10px;height:10px;box-shadow:none}
+.chip .chip-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip .chip-sub{color:var(--faint)}
+.gate{position:fixed;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;padding:16px;z-index:10}
+.gate.show{display:flex}
+.gate .card{max-width:440px}
+.gate ol{margin:8px 0 0;padding-left:20px;color:var(--muted);font-size:14px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M5 14.5a15.5 15.5 0 0 1 22 0M9.5 19a9.2 9.2 0 0 1 13 0" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/><circle cx="16" cy="24" r="2.6" fill="#fff"/></svg></div>
+    <div>
+      <h1>河南大学校园网助手</h1>
+      <p>本机控制台 · 只在这台电脑上运行 · <span id="version">v2.5</span></p>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section class="card" aria-labelledby="form-title">
+      <h2 id="form-title">账号与登录</h2>
+      <p class="sub">填写 henu-student 校园网账号，点“保存并登录”即可连接。</p>
+      <form id="form" autocomplete="on" novalidate>
+        <label class="field"><span>校园网账号</span>
+          <input type="text" id="username" name="username" autocomplete="username" inputmode="text" spellcheck="false" maxlength="64" placeholder="学号或校园网账号" required>
+        </label>
+        <label class="field"><span>校园网密码</span>
+          <div class="input">
+            <input type="password" id="password" name="password" autocomplete="current-password" maxlength="128" placeholder="输入校园网密码">
+            <button type="button" class="reveal" id="reveal" aria-pressed="false">显示</button>
+          </div>
+        </label>
+        <fieldset>
+          <legend>运营商</legend>
+          <div class="seg" role="radiogroup">
+            <input type="radio" name="operator" id="op-mobile" value="mobile" checked><label for="op-mobile">移动</label>
+            <input type="radio" name="operator" id="op-unicom" value="unicom"><label for="op-unicom">联通</label>
+            <input type="radio" name="operator" id="op-telecom" value="telecom"><label for="op-telecom">电信</label>
+            <input type="radio" name="operator" id="op-campus" value="campus"><label for="op-campus">校园资源</label>
+          </div>
+        </fieldset>
+        <div class="actions">
+          <button type="submit" class="btn primary" id="login">保存并登录</button>
+          <button type="button" class="btn ghost" id="save">仅保存</button>
+        </div>
+        <p class="form-msg" id="form-msg" role="status" aria-live="polite"></p>
+      </form>
+      <div class="notes">
+        <p>密码只保存在这台电脑，用当前 Windows 账户加密（DPAPI），不会上传到任何网站。</p>
+        <p>学校认证页面是 HTTP（172.29.35.36:6060），提交时网络传输不加密，请只在校园网内使用。</p>
+        <p>登录时会打开一个专用 Edge 窗口自动填写并点击登录，完成后自动关闭。</p>
+      </div>
+    </section>
+
+    <section class="card" id="status-card" data-level="idle" aria-labelledby="status-title">
+      <h2>当前状态</h2>
+      <div class="status-head"><span class="dot" aria-hidden="true"></span><span class="status-title" id="status-title">连接中…</span></div>
+      <p class="status-msg" id="status-msg">正在读取助手状态。</p>
+      <div class="last-error" id="last-error" role="alert"></div>
+      <dl>
+        <dt>账号</dt><dd id="d-user">—</dd>
+        <dt>运营商</dt><dd id="d-op">—</dd>
+        <dt>状态更新</dt><dd id="d-time">—</dd>
+        <dt>上次检测</dt><dd id="d-check">—</dd>
+      </dl>
+      <div class="actions"><button type="button" class="btn ghost" id="check">立即检查网络</button></div>
+      <div class="log">
+        <h3>本次打开后的记录</h3>
+        <ol id="log"><li class="empty">暂无</li></ol>
+      </div>
+    </section>
+  </div>
+</div>
+
+<button type="button" class="chip" id="chip" data-level="idle" aria-label="查看当前状态">
+  <span class="dot" aria-hidden="true"></span><span class="chip-text"><b id="chip-title">连接中</b> <span class="chip-sub" id="chip-sub"></span></span>
+</button>
+
+<div class="gate" id="gate" role="dialog" aria-modal="true" aria-labelledby="gate-title">
+  <div class="card">
+    <h2 id="gate-title">请从助手里打开控制台</h2>
+    <p class="sub" id="gate-text">为保护你的账号，这个页面需要由本机的校园网助手打开。</p>
+    <ol>
+      <li>点击屏幕右下角托盘里的校园网助手图标（可能在“^”里）。</li>
+      <li>选择“打开网页控制台”，或双击桌面上的“校园网控制台”。</li>
+    </ol>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const OPS = { mobile: '移动', unicom: '联通', telecom: '电信', campus: '校园资源' };
+  const store = {
+    get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { sessionStorage.setItem(k, v); } catch {} },
+    del(k) { try { sessionStorage.removeItem(k); } catch {} }
+  };
+
+  // The tray passes a per-launch token in the URL fragment (never sent over the wire). Keep it for this tab only.
+  let token = new URLSearchParams(location.hash.slice(1)).get('t') || new URLSearchParams(location.search).get('t');
+  if (token) { store.set('henu-token', token); history.replaceState(null, '', location.pathname); }
+  else token = store.get('henu-token');
+
+  const showGate = text => { if (text) $('gate-text').textContent = text; $('gate').classList.add('show'); };
+  if (!token || !/^[0-9a-f]{64}$/.test(token)) { showGate(); return; }
+
+  async function api(path, body) {
+    const opts = { method: body ? 'POST' : 'GET', cache: 'no-store', headers: { 'X-Henu-Token': token } };
+    if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+    const res = await fetch(path, opts);
+    let data = {};
+    try { data = await res.json(); } catch {}
+    if (res.status === 401) { store.del('henu-token'); showGate('助手已经重新启动，旧页面失效了。请从托盘图标重新打开控制台。'); }
+    if (!res.ok) { const e = new Error(data.error || data.message || ('请求失败（' + res.status + '）')); e.status = res.status; e.data = data; throw e; }
+    return data;
+  }
+
+  const fmtTime = iso => {
+    if (!iso) return '—';
+    const d = new Date(iso); if (isNaN(d)) return '—';
+    const p = n => String(n).padStart(2, '0');
+    const today = new Date().toDateString() === d.toDateString();
+    return (today ? '' : (d.getMonth() + 1) + '月' + d.getDate() + '日 ') + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  };
+
+  // ---------- form ----------
+  const form = $('form'), userEl = $('username'), passEl = $('password'), msg = $('form-msg');
+  let config = { configured: false, username: '', operator: '' };
+  let formTouched = false, sending = false, awaitingLogin = false;
+  form.addEventListener('input', () => { formTouched = true; });
+  $('reveal').addEventListener('click', e => {
+    const show = passEl.type === 'password';
+    passEl.type = show ? 'text' : 'password';
+    e.currentTarget.textContent = show ? '隐藏' : '显示';
+    e.currentTarget.setAttribute('aria-pressed', String(show));
+  });
+  const setMsg = (text, kind) => { msg.textContent = text || ''; msg.className = 'form-msg' + (kind ? ' ' + kind : ''); };
+  const selectedOp = () => (form.querySelector('input[name=operator]:checked') || {}).value || '';
+
+  function applyConfig(c) {
+    config = c || config;
+    passEl.placeholder = config.configured ? '已加密保存；不修改密码可留空' : '输入校园网密码';
+    if (!formTouched) {
+      if (config.username) userEl.value = config.username;
+      const r = config.operator && $('op-' + config.operator); if (r) r.checked = true;
+    }
+  }
+
+  function collect() {
+    const username = userEl.value.trim(), password = passEl.value, operator = selectedOp();
+    if (!/^[A-Za-z0-9._]{1,64}$/.test(username)) { userEl.focus(); throw new Error('账号只能包含字母、数字、点和下划线。'); }
+    const keep = config.configured && username === config.username;
+    if (!password && !keep) { passEl.focus(); throw new Error(config.configured ? '更换账号时需要重新输入密码。' : '请输入校园网密码。'); }
+    if (!OPS[operator]) throw new Error('请选择运营商。');
+    return { username, password, operator };
+  }
+
+  async function send(kind) {
+    if (sending) return;
+    let body;
+    try { body = collect(); } catch (e) { setMsg(e.message, 'error'); return; }
+    sending = true; $('login').disabled = $('save').disabled = true;
+    setMsg(kind === 'login' ? '正在保存并发起登录…' : '正在保存…');
+    try {
+      const data = await api(kind === 'login' ? '/api/login' : '/api/config', body);
+      passEl.value = ''; formTouched = false;
+      if (kind === 'login') { awaitingLogin = true; setMsg(data.message || '已开始登录，右侧会显示进度；需要时会弹出一个 Edge 窗口自动操作。', 'ok'); }
+      else { applyConfig(data.config); setMsg('已保存。助手之后会用新的账号设置自动登录。', 'ok'); }
+      poll(true);
+    } catch (e) {
+      if (e.status === 409) setMsg((e.data && e.data.message) || '正在处理上一次登录，请稍候。');
+      else if (e.status !== 401) setMsg(e.message || '保存失败。', 'error');
+    } finally { sending = false; $('login').disabled = $('save').disabled = false; }
+  }
+  form.addEventListener('submit', e => { e.preventDefault(); send('login'); });
+  $('save').addEventListener('click', () => send('save'));
+  $('check').addEventListener('click', async e => {
+    const b = e.currentTarget; b.disabled = true;
+    try { await api('/api/check', {}); poll(true); } catch {} finally { setTimeout(() => { b.disabled = false; }, 1500); }
+  });
+  $('chip').addEventListener('click', () => $('status-card').scrollIntoView({ behavior: 'smooth', block: 'start' }));
+
+  // ---------- status ----------
+  const logEl = $('log'); let lastKey = '', entries = [];
+  function addLog(title, message, level) {
+    entries.unshift({ t: new Date(), title, message, level });
+    entries = entries.slice(0, 8);
+    logEl.replaceChildren(...entries.map(x => {
+      const li = document.createElement('li');
+      const tm = document.createElement('time'); tm.textContent = fmtTime(x.t.toISOString());
+      const span = document.createElement('span'); const b = document.createElement('b'); b.textContent = x.title;
+      span.append(b, document.createTextNode('　' + (x.message || '')));
+      li.append(tm, span); return li;
+    }));
+  }
+
+  function render(s) {
+    const level = s.level || 'idle', title = s.title || '检测中';
+    $('status-card').dataset.level = level; $('chip').dataset.level = level;
+    $('status-title').textContent = title;
+    $('status-msg').textContent = s.message || '';
+    $('chip-title').textContent = title;
+    $('chip-sub').textContent = s.busy ? '处理中' : (s.config && s.config.username ? s.config.username : '');
+    document.title = title + ' · 校园网控制台';
+    $('d-user').textContent = (s.config && s.config.username) || '未设置';
+    $('d-op').textContent = (s.config && OPS[s.config.operator]) || '—';
+    $('d-time').textContent = fmtTime(s.time);
+    $('d-check').textContent = fmtTime(s.lastCheck);
+    const le = $('last-error');
+    if (s.lastError && s.lastError.message && level !== 'ok') { le.textContent = '上次登录失败：' + s.lastError.message + '（' + fmtTime(s.lastError.time) + '）'; le.classList.add('show'); }
+    else le.classList.remove('show');
+    if (s.version) $('version').textContent = 'v' + s.version;
+    applyConfig(s.config);
+    if (awaitingLogin && !s.busy && level !== 'busy') {
+      awaitingLogin = false;
+      if (level === 'ok') setMsg('登录完成，已经联网。', 'ok');
+      else setMsg('这次没有登录成功：' + ((s.lastError && s.lastError.message) || s.message || '请查看右侧状态。'), 'error');
+    }
+    const key = (s.phase || '') + '|' + (s.message || '');
+    if (key !== lastKey) { lastKey = key; addLog(title, s.message, level); }
+  }
+
+  let timer = 0, failures = 0, busy = false;
+  async function poll(soon) {
+    clearTimeout(timer);
+    if (soon) { timer = setTimeout(poll, 300); return; }
+    try {
+      const s = await api('/api/status');
+      failures = 0; busy = !!s.busy || s.level === 'busy'; render(s);
+    } catch (e) {
+      if (e.status === 401) return;
+      if (++failures >= 2) {
+        $('chip').dataset.level = 'error'; $('chip-title').textContent = '助手未响应'; $('chip-sub').textContent = '';
+        $('status-card').dataset.level = 'error'; $('status-title').textContent = '助手未响应';
+        $('status-msg').textContent = '校园网助手可能已退出。请双击桌面“校园网控制台”重新打开。';
+      }
+    }
+    timer = setTimeout(poll, document.hidden ? 5000 : (busy ? 700 : 2000));
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
+  poll();
+})();
+</script>
+</body>
+</html>

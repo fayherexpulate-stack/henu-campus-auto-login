@@ -1,6 +1,9 @@
 ﻿$appDir = Join-Path $env:LOCALAPPDATA 'HenuAutoLogin'
 $configPath = Join-Path $appDir 'config.json'
 $logPath = Join-Path $appDir 'auto-login.log'
+$henuVersion = '2.5'
+$henuOperators = @('mobile','unicom','telecom','campus')
+$henuPortalOrigin = 'http://172.29.35.36:6060'
 
 function Write-Log([string]$Message) {
     $logMutex=New-Object Threading.Mutex($false,'Local\HenuAutoLoginLog')
@@ -195,6 +198,84 @@ function Start-NoConsoleProcess([string]$FilePath,[string]$Arguments) {
     $info.UseShellExecute=$false;$info.CreateNoWindow=$true
     $info.WindowStyle=[Diagnostics.ProcessWindowStyle]::Hidden
     return [Diagnostics.Process]::Start($info)
+}
+function Test-HenuUsername([string]$Username) { return ([string]$Username -cmatch '^[A-Za-z0-9._]{1,64}$') }
+function Protect-HenuSecret([string]$PlainText) {
+    Add-Type -AssemblyName System.Security
+    $bytes=[Text.Encoding]::UTF8.GetBytes($PlainText)
+    try { return [Convert]::ToBase64String([Security.Cryptography.ProtectedData]::Protect($bytes,$null,[Security.Cryptography.DataProtectionScope]::CurrentUser)) }
+    finally { [Array]::Clear($bytes,0,$bytes.Length) }
+}
+function Read-HenuConfig([string]$Path=$configPath) {
+    if(-not (Test-Path -LiteralPath $Path)){return $null}
+    try { return (Get-Content -LiteralPath $Path -Raw -Encoding UTF8|ConvertFrom-Json) } catch { return $null }
+}
+function Get-HenuConfigSummary([string]$Path=$configPath) {
+    # Never returns the password or its ciphertext; safe to show in the tray or the local panel.
+    $config=Read-HenuConfig $Path
+    if(-not $config -or [string]::IsNullOrWhiteSpace([string]$config.username)){
+        return [ordered]@{configured=$false;username='';operator=''}
+    }
+    return [ordered]@{
+        configured=(-not [string]::IsNullOrWhiteSpace([string]$config.protectedPassword))
+        username=[string]$config.username;operator=[string]$config.operator
+    }
+}
+function Save-HenuConfig {
+    param(
+        [string]$Username,[string]$Password,[string]$Operator,
+        [string]$Path=$configPath,
+        [scriptblock]$Protector={param($plain) Protect-HenuSecret $plain}
+    )
+    $Username=([string]$Username).Trim()
+    if(-not (Test-HenuUsername $Username)){throw '账号只能包含字母、数字、点和下划线（1～64 位）。'}
+    if($henuOperators -notcontains $Operator){throw '请选择运营商。'}
+    $existing=Read-HenuConfig $Path
+    if([string]::IsNullOrEmpty($Password)){
+        # An empty password keeps the saved one, but only for the same account.
+        if(-not $existing -or [string]::IsNullOrWhiteSpace([string]$existing.protectedPassword)){throw '请输入校园网密码。'}
+        if([string]$existing.username -ne $Username){throw '更换账号时需要重新输入密码。'}
+        $protected=[string]$existing.protectedPassword
+    } else {
+        if($Password.Length -gt 128){throw '密码长度超出范围。'}
+        $protected=[string](& $Protector $Password)
+        if([string]::IsNullOrWhiteSpace($protected)){throw '无法加密保存密码。'}
+    }
+    $acName='HD-SuShe-ME60'
+    if($existing -and [string]$existing.defaultAcName -match '^[A-Za-z0-9._:-]{1,128}$'){$acName=[string]$existing.defaultAcName}
+    $configuration=[ordered]@{
+        version=$henuVersion;ssid='henu-student';username=$Username;protectedPassword=$protected
+        operator=$Operator;loginMode='browser';portalOrigin=$henuPortalOrigin;defaultAcName=$acName
+    }
+    Set-AtomicJson $Path $configuration
+    return (Get-HenuConfigSummary $Path)
+}
+function Get-HenuOperatorName([string]$Operator) {
+    $names=@{mobile='移动';unicom='联通';telecom='电信';campus='校园资源'}
+    if($names.ContainsKey($Operator)){return $names[$Operator]}
+    return '未设置'
+}
+function Read-HenuStatus {
+    $path=Join-Path $appDir 'status.json'
+    if(-not (Test-Path -LiteralPath $path)){return $null}
+    try { return (Get-Content -LiteralPath $path -Raw -Encoding UTF8|ConvertFrom-Json) } catch { return $null }
+}
+function Get-HenuPhaseInfo([string]$Phase) {
+    # One mapping shared by the tray icon, the flyout and the web panel.
+    switch -Exact ($Phase) {
+        'online'     { return [ordered]@{level='ok';title='已联网'} }
+        'checking'   { return [ordered]@{level='busy';title='正在检测'} }
+        'queued'     { return [ordered]@{level='busy';title='准备登录'} }
+        'connecting' { return [ordered]@{level='busy';title='正在连接 Wi-Fi'} }
+        'opening'    { return [ordered]@{level='busy';title='正在打开认证页'} }
+        'waiting'    { return [ordered]@{level='busy';title='等待认证页'} }
+        'filling'    { return [ordered]@{level='busy';title='正在登录'} }
+        'submitted'  { return [ordered]@{level='busy';title='验证联网结果'} }
+        'cooldown'   { return [ordered]@{level='warn';title='稍后重试'} }
+        'absent'     { return [ordered]@{level='idle';title='未发现 henu-student'} }
+        'error'      { return [ordered]@{level='error';title='需要处理'} }
+        default      { return [ordered]@{level='idle';title='检测中'} }
+    }
 }
 function Get-PlainText([string]$ProtectedText) {
     Add-Type -AssemblyName System.Security
